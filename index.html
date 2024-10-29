@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="de" xmlns="http://www.w3.org/1999/html">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="css/style.css">
+  <title>GVT - EA2 - Kim Feller</title>
+</head>
+
+<body>
+<h1>EA2 - 2D-Geometrie mit Linien</h1>
+<h2>Graphical Visualisation Technologies</h2>
+<p>Kim Lara Feller, Technische Hochschule Lübeck, Matrikelnummer 331177</p>
+<p><b>Hinweise und Referenzen</b></p>
+<ul>
+  <li><a target="_blank" href="https://de.vexels.com/vectors/preview/125798/geometrische-schneeflockensammlung">Inspiration für eine geometrische Schneeflocke</a></li>
+  <li><a target="_blank" href="https://adammurray.link/webgl/tutorials/gradient/">Zusätzliches Tutorial, an dem ich mich orientiert habe (Farbverlauf)</a></li>
+</ul>
+
+<canvas id="canvas" width="800" height="800"></canvas>
+<script>
+  const canvas = document.getElementById('canvas');
+  const gl = canvas.getContext('webgl');
+
+  if (!gl) {
+    console.error('WebGL wird von diesem Browser nicht unterstützt');
+  }
+
+  const vertices = [];
+  const branches = 8; // Anzahl Hauptäste
+  const mainLength = 0.4; // Länge Hauptäste
+  const decorationLength = 0.2; // Länge Verzierungen
+  const shortDecorationLength = 0.1; // Kürzere Länge der mittleren Äste
+  const decorationCount = 3; // Anzahl der Verzierungen pro Hauptast
+  const polygonSides = 6; // Anzahl der Seiten des Vielecks
+  const polygonRadius = 0.1; // Radius des Vielecks
+
+  // Hinzufügen von Hauptästen und Verzierungen
+  function addBranch(angle, isMiddleBranch) {
+    const mainX = Math.cos(angle) * mainLength;
+    const mainY = Math.sin(angle) * mainLength;
+
+    // Hauptast
+    vertices.push(0, 0, mainX, mainY);
+
+    // Verzierungen entlang des Hauptastes
+    for (let i = 1; i <= decorationCount; i++) {
+      const dX = mainX * (i / (decorationCount + 1));
+      const dY = mainY * (i / (decorationCount + 1));
+
+      // Verzierungen (kleine Linien)
+      const decorationAngleOffset = Math.PI / 6; // Winkel Verzierungen
+      const currentDecorationLength = isMiddleBranch ? shortDecorationLength : decorationLength; // Kurz o. lang
+
+      for (let j = -1; j <= 1; j += 2) {
+        const decorationX = dX + Math.cos(angle + j * decorationAngleOffset) * currentDecorationLength;
+        const decorationY = dY + Math.sin(angle + j * decorationAngleOffset) * currentDecorationLength;
+
+        vertices.push(dX, dY, decorationX, decorationY);
+      }
+    }
+  }
+
+  // Hauptäste erzeugen
+  for (let i = 0; i < branches; i++) {
+    const angle = (i / branches) * Math.PI * 2;
+    const isMiddleBranch = (i % 2) === 1; // Alle ungeraden Äste sind die mittleren Äste
+    addBranch(angle, isMiddleBranch);
+  }
+
+  // Vieleck in der Mitte hinzufügen
+  for (let i = 0; i < polygonSides; i++) {
+    const angle = (i / polygonSides) * Math.PI * 2;
+    const nextAngle = ((i + 1) % polygonSides) / polygonSides * Math.PI * 2;
+
+    vertices.push(
+      Math.cos(angle) * polygonRadius, Math.sin(angle) * polygonRadius,
+      Math.cos(nextAngle) * polygonRadius, Math.sin(nextAngle) * polygonRadius
+    );
+  }
+
+  const vertexBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+
+  const vertexShaderSource = `
+            attribute vec2 coordinates;
+            void main(void) {
+                gl_Position = vec4(coordinates, 0.0, 1.0);
+            }
+        `;
+
+  const fragmentShaderSource = `
+            precision mediump float;
+            void main(void) {
+                // orientiert an https://adammurray.link/webgl/tutorials/gradient/
+                float dist = length(gl_FragCoord.xy - vec2(400.0, 400.0)) / 400.0;
+                vec3 color = mix(vec3(0.0, 1.0, 1.0), vec3(0.0, 0.0, 0.5), dist);
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+  function createShader(gl, source, type) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    return shader;
+  }
+
+  const vertexShader = createShader(gl, vertexShaderSource, gl.VERTEX_SHADER);
+  const fragmentShader = createShader(gl, fragmentShaderSource, gl.FRAGMENT_SHADER);
+
+  const shaderProgram = gl.createProgram();
+  gl.attachShader(shaderProgram, vertexShader);
+  gl.attachShader(shaderProgram, fragmentShader);
+  gl.linkProgram(shaderProgram);
+  gl.useProgram(shaderProgram);
+
+  const coordinates = gl.getAttribLocation(shaderProgram, 'coordinates');
+  gl.vertexAttribPointer(coordinates, 2, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(coordinates);
+
+  gl.clearColor(1.0, 1.0, 1.0, 1.0); // weiß
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  // Idee Strichbreite verändern (Konnte ich mit meinen verwendeten Browsern nicht nachvollziehen in der Ausgabe)
+  //gl.lineWidth(4.0);
+
+  gl.drawArrays(gl.LINES, 0, vertices.length / 2);
+
+  for (let i = 0; i < branches; i++) {
+    const angle = (i / branches) * Math.PI * 2;
+    const isMiddleBranch = (i % 2) === 1;
+    if (!isMiddleBranch) {
+      gl.drawArrays(gl.LINES, (vertices.length / 2) + (i * decorationCount * 4), decorationCount * 2); //Verzierungen
+    }
+  }
+</script>
+</body>
+</html>
